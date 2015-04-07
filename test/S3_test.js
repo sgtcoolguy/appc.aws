@@ -6,8 +6,26 @@ var should = require('should'),
 
 describe("S3", function(){
 
-	it("should connect to AWS", function(done){
+	var server,
+		BucketModel,
+		ObjectModel;
 
+	before(function(done){
+		server = new Arrow({logLevel:'warn'});
+		server.start(function(err){
+			if (err) { return done(err); }
+			BucketModel = server.getModel('appc.aws/S3Bucket');
+			ObjectModel = server.getModel('appc.aws/S3Object');
+			done();
+		});
+	});
+
+	after(function(done){
+		server.stop(done);
+	});
+
+	it("should connect to AWS", function(done){
+		// make sure AWS connectivity is setup
 		var AWS = require('aws-sdk');
 		var config = require('../conf/local.js').connectors['appc.aws'].config;
 		AWS.config.update(config);
@@ -20,30 +38,14 @@ describe("S3", function(){
 
 	describe("Buckets", function(){
 
-		var server,
-			Model;
-
-		before(function(done){
-			server = new Arrow({logLevel:'trace'});
-			server.start(function(err){
-				if (err) { return done(err); }
-				Model = server.getModel('appc.aws/S3Bucket');
-				done();
-			});
-		});
-
-		after(function(done){
-			server.stop(done);
-		});
-
 		it("should findAll and findOne", function(done){
-			Model.findAll(function(err,result){
+			BucketModel.findAll(function(err,result){
 				should(err).not.be.ok;
 				should(result).be.ok;
 				try {
 					async.map(result, function(bucket,cb) {
 						should(bucket).be.ok;
-						Model.findOne(bucket.getPrimaryKey(), function(err,bucket2){
+						BucketModel.findOne(bucket.getPrimaryKey(), function(err,bucket2){
 							should(err).not.be.ok;
 							should(bucket2).be.ok;
 							should(bucket.getPrimaryKey()).be.equal(bucket2.getPrimaryKey());
@@ -59,42 +61,53 @@ describe("S3", function(){
 
 		it("should create and delete", function(done){
 			var name = 'test_bucket_'+Date.now();
-			Model.create({name:name}, function(err,bucket){
+			BucketModel.create({name:name}, function(err,bucket){
 				should(err).not.be.ok;
 				should(bucket).be.ok;
-				Model.delete(bucket, done);
+				BucketModel.delete(bucket, done);
 			});
 		});
 
 	});
 
 	describe("Objects", function(){
-		var server,
-			Model;
 
-		before(function(done){
-			server = new Arrow({logLevel:'trace'});
-			server.start(function(err){
-				if (err) { return done(err); }
-				Model = server.getModel('appc.aws/S3Object');
-				done();
+		it("should create and then delete", function(done){
+			var params = {
+				bucket: 'appc-test',
+				name: 'foo.txt',
+				body: new Buffer('bar'),
+				acl: 'public-read'
+			};
+			ObjectModel.create(params, function(err,result){
+				should(err).not.be.ok;
+				should(result).be.ok;
+				result.delete(done);
 			});
 		});
 
-		after(function(done){
-			server.stop(done);
-		});
-
-		it.only("should create", function(done){
-			done();
-		});
-
-		it.skip("should query", function(done){
-			Model.query({where:{bucket:'appc-registry-server'}},function(err,result){
+		it("should query", function(done){
+			var params = {
+				bucket: 'appc-test',
+				name: 'query.txt',
+				body: new Buffer('bar'),
+				acl: 'private'
+			};
+			ObjectModel.create(params, function(err,result){
 				should(err).not.be.ok;
 				should(result).be.ok;
-				should(result[0].getSignedUrl({Expires:60})).be.a.string;
-				done();
+				ObjectModel.query({where:{bucket:'appc-test',acl:'private'}},function(err,result){
+					should(err).not.be.ok;
+					should(result).be.ok;
+					should(result[0].getSignedUrl({Expires:60})).be.a.string;
+					Arrow.Request(result[0].getSignedUrl({Expires:60}), function(err,resp,body){
+						should(err).not.be.ok;
+						should(resp).be.an.object;
+						should(body).be.a.string;
+						should(body).be.equal('bar');
+						result[0].delete(done);
+					});
+				});
 			});
 		});
 	});

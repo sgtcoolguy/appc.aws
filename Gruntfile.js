@@ -9,7 +9,10 @@ module.exports = function(grunt) {
 				ignoreLeaks: false,
 				globals: [
 					'requestSSLHooks', 
-					'requestSSLFingerprints'
+					'requestSSLFingerprints',
+					'requestSSLInitializing',
+					'requestSSLInsideHook',
+					'requestSSLInitialized'
 				]
 			},
 			src: ['test/**/*.js']
